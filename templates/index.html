@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>工作日程面板</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=20260903j" />
+</head>
+<body>
+  <div id="login-view" class="login-wrap hidden">
+    <div class="login-shell">
+      <aside class="login-promo">
+        <div class="login-promo-brand">
+          <span class="brand-mark">日</span>
+          <span>工作日程面板</span>
+        </div>
+        <h2>团队每周工作，一张看板看完</h2>
+        <p class="login-promo-lead">按周跟踪任务进度、完成内容和回款节点，把协作从聊天记录里拿出来。</p>
+        <ul class="login-features">
+          <li>
+            <strong>周进度看板</strong>
+            <span>分类、任务、状态一眼对齐，月度与年度目标始终在右侧。</span>
+          </li>
+          <li>
+            <strong>个人本周事项</strong>
+            <span>工作任务里 @同事，对方右侧面板只看到属于自己的那一句。</span>
+          </li>
+          <li>
+            <strong>销售回款跟踪</strong>
+            <span>管理员可登记确定回款与已回款，并在周卡片上同步金额。</span>
+          </li>
+        </ul>
+        <p class="login-promo-foot">内部工作区 · 请使用管理员开通的帐号登录</p>
+      </aside>
+      <div class="login-panel">
+        <div class="login-card">
+          <p class="login-kicker">Welcome back</p>
+          <h1>登录工作区</h1>
+          <p class="login-lead">使用公司帐号进入工作日程面板</p>
+          <form id="auth-form">
+            <label>
+              帐号
+              <input id="username" name="username" autocomplete="username" required placeholder="请输入帐号" />
+            </label>
+            <label id="display-name-field" class="hidden">
+              显示名
+              <input id="display-name" name="display_name" autocomplete="nickname" />
+            </label>
+            <label>
+              密码
+              <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="请输入密码" />
+            </label>
+            <p id="auth-error" class="error" hidden></p>
+            <button type="submit" id="auth-submit">进入工作区</button>
+          </form>
+          <p class="login-switch hidden" id="login-register-wrap">
+            <span id="switch-hint">还没有帐号？</span>
+            <button type="button" id="switch-mode" class="link-btn">注册一个</button>
+          </p>
+          <p class="login-help">没有帐号？请联系管理员在「管理」中开通。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="app-view" class="app hidden">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">日</span>
+        <div>
+          <strong>工作日程面板</strong>
+          <span>项目工作进度</span>
+        </div>
+      </div>
+      <div class="week-nav" id="week-nav">
+        <button type="button" id="prev-week" class="week-arrow" aria-label="上一周">‹</button>
+        <div class="week-now">
+          <span id="week-title">第 36 周</span>
+          <small id="week-span">09/01 – 09/07</small>
+        </div>
+        <button type="button" id="next-week" class="week-arrow" aria-label="下一周">›</button>
+        <button type="button" id="this-week">回到本周</button>
+      </div>
+      <nav class="tabs">
+        <button type="button" class="tab active" data-view="board">进度看板</button>
+        <button type="button" class="tab" data-view="summary">周工作汇总</button>
+        <button type="button" class="tab hidden" id="sales-tab" data-view="sales">销售管理</button>
+        <button type="button" class="tab hidden" id="admin-tab" data-view="admin">管理</button>
+      </nav>
+      <div class="userbox">
+        <span id="whoami"></span>
+        <button type="button" id="logout" class="ghost">退出</button>
+      </div>
+    </header>
+
+    <section id="board-view" class="view board-layout">
+      <div class="board-main">
+        <div class="toolbar">
+          <button type="button" id="add-category">＋ 新增分类</button>
+          <p class="toolbar-hint">一行一个任务 · 格子含工作任务 / 完成内容 / 状态 · <span class="legend doing">黄=进行中</span> <span class="legend done">绿=完成</span> <span class="legend blocked">红=受阻</span></p>
+        </div>
+        <div id="board-scroll" class="board-scroll">
+          <table id="board" class="board-table"></table>
+        </div>
+      </div>
+      <aside id="my-panel" class="my-panel">
+        <p class="panel-kicker">MY WEEK</p>
+        <h2>我的本周任务</h2>
+        <p class="muted">只显示工作任务里 @ 到你的那一句，看板格子里大家都能看到全部内容。</p>
+        <div id="inbox-week"></div>
+        <h3>往期未完成 / 受阻</h3>
+        <div id="inbox-overdue"></div>
+      </aside>
+    </section>
+
+    <section id="summary-view" class="view hidden">
+      <header id="digest" class="digest"></header>
+      <div class="summary-grid">
+        <article>
+          <h2>本周任务</h2>
+          <div id="summary-tasks"></div>
+        </article>
+        <article>
+          <h2>个人记录</h2>
+          <label class="note-label">我的本周记录</label>
+          <textarea id="my-note" placeholder="这周做了什么、卡在哪、下周打算……"></textarea>
+          <div class="note-actions">
+            <button type="button" id="save-note">保存</button>
+            <span id="note-status" class="muted"></span>
+          </div>
+          <div id="team-notes"></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="sales-view" class="view hidden">
+      <header class="digest">
+        <h2>销售管理</h2>
+        <p id="sales-year-line"></p>
+      </header>
+      <div id="sales-stats" class="sales-stats"></div>
+      <div class="sales-charts">
+        <div class="sales-chart-pane">
+          <h3 class="chart-title">累计曲线</h3>
+          <div id="sales-line" class="chart-box"></div>
+        </div>
+        <div class="sales-chart-pane">
+          <h3 class="chart-title">每月金额</h3>
+          <div id="sales-bars" class="chart-box"></div>
+        </div>
+      </div>
+      <div id="sales-projects"></div>
+    </section>
+
+    <section id="admin-view" class="view hidden">
+      <header class="digest">
+        <h2>人员与密码</h2>
+        <p>仅管理员可见。可开通帐号、改显示名、重置密码，以及删除帐号。</p>
+      </header>
+      <form id="admin-add-user" class="admin-form">
+        <input id="new-username" placeholder="帐号" required />
+        <input id="new-display-name" placeholder="显示名" />
+        <input id="new-password" type="password" placeholder="密码" required />
+        <label class="check-line"><input type="checkbox" id="new-is-admin" /> 管理员</label>
+        <button type="submit">开通帐号</button>
+      </form>
+      <p id="admin-msg" class="muted"></p>
+      <table class="sum-table" id="admin-users"></table>
+    </section>
+  </div>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h3 id="modal-title">编辑</h3>
+      <div id="modal-body"></div>
+      <div class="modal-actions">
+        <button type="button" id="modal-cancel" class="ghost">取消</button>
+        <button type="button" id="modal-save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}?v=20260903k"></script>
+</body>
+</html>
