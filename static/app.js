@@ -2,9 +2,12 @@ const COLORS = ["#c2410c", "#b45309", "#4d7c0f", "#0f766e", "#1d4ed8", "#7c3aed"
 const STATUS_CYCLE = ["empty", "doing", "done", "blocked"];
 const STATUS_LABEL = { empty: "未填", doing: "进行中", done: "已完成", blocked: "受阻" };
 
+const REMEMBER_KEY = "jianjin_remember";
+
 const state = {
   user: null,
   registerMode: false,
+  registerModeType: "create",
   view: "board",
   board: null,
   summary: null,
@@ -12,10 +15,15 @@ const state = {
   selectedWeek: null,
   visibleMonth: null,
   modal: null,
+  agentApiKey: null,
 };
 
 function isAdmin() {
-  return !!state.user?.is_admin;
+  return !!state.user?.is_admin && !isSuperAdmin();
+}
+
+function isSuperAdmin() {
+  return !!state.user?.is_superadmin;
 }
 
 const $ = (id) => document.getElementById(id);
@@ -28,7 +36,12 @@ async function api(path, options = {}) {
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "请求失败");
+  if (!res.ok) {
+    const err = new Error(data.error || "请求失败");
+    err.code = data.code;
+    err.payload = data;
+    throw err;
+  }
   return data;
 }
 
@@ -245,32 +258,186 @@ function showLogin() {
   $("app-view").classList.add("hidden");
 }
 
+function clearSuperAdminUi() {
+  state.superadmin = null;
+  const stats = $("sa-stats");
+  const orgs = $("sa-orgs");
+  const members = $("sa-members");
+  const msg = $("sa-msg");
+  const section = $("sa-members-section");
+  if (stats) stats.innerHTML = "";
+  if (orgs) orgs.innerHTML = "";
+  if (members) members.innerHTML = "";
+  if (msg) msg.textContent = "";
+  if (section) section.classList.add("hidden");
+  $("superadmin-view")?.classList.add("hidden");
+  $("superadmin-tab")?.classList.add("hidden");
+}
+
+function resetAppViews() {
+  state.view = "board";
+  state.selectedWeek = null;
+  state.board = null;
+  state.summary = null;
+  state.inbox = null;
+  clearSuperAdminUi();
+  $("board-view")?.classList.remove("hidden");
+  $("summary-view")?.classList.add("hidden");
+  $("sales-view")?.classList.add("hidden");
+  $("admin-view")?.classList.add("hidden");
+  $("agent-view")?.classList.add("hidden");
+  $("week-nav")?.classList.remove("hidden");
+  document.querySelectorAll(".tab").forEach((t) => {
+    t.classList.toggle("active", t.dataset.view === "board");
+  });
+  $("admin-tab")?.classList.add("hidden");
+  $("sales-tab")?.classList.add("hidden");
+  $("agent-tab")?.classList.add("hidden");
+  document.querySelectorAll(".tab[data-view='board'], .tab[data-view='summary']").forEach((tab) => {
+    tab.classList.remove("hidden");
+  });
+}
+
 function showApp() {
   $("login-view").classList.add("hidden");
   $("app-view").classList.remove("hidden");
-  $("whoami").textContent = state.user.display_name;
+  const org = state.user.organization_name ? ` · ${state.user.organization_name}` : "";
+  $("whoami").textContent = isSuperAdmin() ? `${state.user.display_name} · 超管` : `${state.user.display_name}${org}`;
   $("admin-tab").classList.toggle("hidden", !isAdmin());
   $("sales-tab").classList.toggle("hidden", !isAdmin());
+  $("agent-tab").classList.toggle("hidden", isSuperAdmin());
+  $("superadmin-tab").classList.toggle("hidden", !isSuperAdmin());
+  document.querySelectorAll(".tab[data-view='board'], .tab[data-view='summary']").forEach((tab) => {
+    tab.classList.toggle("hidden", isSuperAdmin());
+  });
+  if (!isSuperAdmin()) {
+    clearSuperAdminUi();
+  }
+}
+
+function loadRememberedCredentials() {
+  try {
+    const raw = localStorage.getItem(REMEMBER_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.username) $("username").value = data.username;
+    if (data.password) $("password").value = data.password;
+    if (data.remember) $("remember-me").checked = true;
+  } catch {
+    /* ignore */
+  }
+}
+
+function saveRememberedCredentials() {
+  if (state.registerMode) return;
+  if ($("remember-me").checked) {
+    localStorage.setItem(
+      REMEMBER_KEY,
+      JSON.stringify({
+        remember: true,
+        username: $("username").value.trim(),
+        password: $("password").value,
+      }),
+    );
+  } else {
+    localStorage.removeItem(REMEMBER_KEY);
+  }
+}
+
+function togglePasswordVisibility() {
+  const input = $("password");
+  const btn = $("toggle-password");
+  const visible = input.type === "text";
+  input.type = visible ? "password" : "text";
+  btn.textContent = visible ? "👁" : "🙈";
+  btn.setAttribute("aria-label", visible ? "显示密码" : "隐藏密码");
+  btn.title = visible ? "显示密码" : "隐藏密码";
+}
+
+function resetJoinModal() {
+  $("join-modal-body").hidden = false;
+  $("join-modal-actions").classList.remove("hidden");
+  $("join-modal-success").classList.add("hidden");
+  $("join-modal-done").classList.add("hidden");
+  $("join-modal-confirm").disabled = false;
+}
+
+function showJoinModal(orgName) {
+  resetJoinModal();
+  $("join-modal-body").innerHTML = `「<strong>${escapeHtml(orgName)}</strong>」组织名称已存在，是否加入该组织？`;
+  $("join-modal").classList.remove("hidden");
+}
+
+function hideJoinModal() {
+  $("join-modal").classList.add("hidden");
+  resetJoinModal();
+}
+
+function showJoinSuccessInModal() {
+  $("join-modal-body").hidden = true;
+  $("join-modal-actions").classList.add("hidden");
+  $("join-modal-success").classList.remove("hidden");
+  $("join-modal-done").classList.remove("hidden");
+}
+
+async function submitJoinRequest() {
+  const err = $("auth-error");
+  err.hidden = true;
+  $("join-modal-confirm").disabled = true;
+  try {
+    await api("/api/register", {
+      method: "POST",
+      body: {
+        username: $("username").value.trim(),
+        password: $("password").value,
+        display_name: $("display-name").value.trim(),
+        organization_name: $("org-name").value.trim(),
+        mode: "join",
+      },
+    });
+    showJoinSuccessInModal();
+  } catch (ex) {
+    $("join-modal-confirm").disabled = false;
+    hideJoinModal();
+    err.hidden = false;
+    err.textContent = ex.message;
+    state.registerModeType = "create";
+  }
 }
 
 function setAuthMode(register) {
   state.registerMode = register;
+  state.registerModeType = "create";
+  $("org-name-field").classList.toggle("hidden", !register);
   $("display-name-field").classList.toggle("hidden", !register);
+  $("login-help-register").classList.toggle("hidden", !register);
+  $("auth-lead").classList.toggle("hidden", register);
+  $("org-name").required = register;
+  $("remember-wrap").classList.toggle("hidden", register);
+  $("auth-title").textContent = register ? "注册用户" : "登录工作区";
+  if (!register) {
+    $("auth-lead").textContent = "使用帐号密码登录，无需填写组织名";
+  }
   $("auth-submit").textContent = register ? "注册并进入" : "进入工作区";
   $("switch-hint").textContent = register ? "已有帐号？" : "还没有帐号？";
-  $("switch-mode").textContent = register ? "去登录" : "注册一个";
+  $("switch-mode").textContent = register ? "去登录" : "去注册";
   $("password").autocomplete = register ? "new-password" : "current-password";
 }
 
 async function boot() {
   const me = await api("/api/me");
   if (!me.user) {
+    loadRememberedCredentials();
     showLogin();
     return;
   }
   state.user = me.user;
   showApp();
-  await loadBoard();
+  if (isSuperAdmin()) {
+    switchView("superadmin");
+    return;
+  }
+  switchView("board");
 }
 
 async function loadBoard() {
@@ -838,20 +1005,34 @@ function renderSummary() {
 }
 
 function switchView(view) {
+  if (isSuperAdmin()) {
+    view = "superadmin";
+  } else if (view === "superadmin") {
+    view = "board";
+  }
   if ((view === "sales" || view === "admin") && !isAdmin()) view = "board";
+  if (view === "agent" && isSuperAdmin()) view = "superadmin";
   state.view = view;
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === view));
   $("board-view").classList.toggle("hidden", view !== "board");
   $("summary-view").classList.toggle("hidden", view !== "summary");
   $("sales-view").classList.toggle("hidden", view !== "sales");
   $("admin-view").classList.toggle("hidden", view !== "admin");
-  $("week-nav").classList.toggle("hidden", view === "sales" || view === "admin");
+  $("agent-view")?.classList.toggle("hidden", view !== "agent");
+  $("superadmin-view").classList.toggle("hidden", view !== "superadmin" || !isSuperAdmin());
+  $("week-nav").classList.toggle("hidden", view === "sales" || view === "admin" || view === "superadmin" || view === "agent");
   if (view === "summary") loadSummary();
   else if (view === "sales") loadSales();
   else if (view === "admin") loadAdmin();
-  else {
-    renderBoard();
-    loadInbox();
+  else if (view === "agent") loadAgentPanel();
+  else if (view === "superadmin" && isSuperAdmin()) loadSuperAdmin();
+  else if (view === "board") {
+    if (state.board) {
+      renderBoard();
+      loadInbox();
+    } else {
+      loadBoard();
+    }
   }
 }
 
@@ -865,22 +1046,69 @@ $("auth-form").addEventListener("submit", async (e) => {
       password: $("password").value,
       display_name: $("display-name").value.trim(),
     };
-    const path = state.registerMode ? "/api/register" : "/api/login";
-    const data = await api(path, { method: "POST", body });
-    state.user = data.user;
+    if (state.registerMode) {
+      body.organization_name = $("org-name").value.trim();
+      body.mode = state.registerModeType;
+      if (!body.organization_name) {
+        err.hidden = false;
+        err.textContent = "请填写组织名称";
+        return;
+      }
+      const data = await api("/api/register", { method: "POST", body });
+      if (data.pending) {
+        resetJoinModal();
+        $("join-modal").classList.remove("hidden");
+        showJoinSuccessInModal();
+        return;
+      }
+      state.user = data.user;
+    } else {
+      const data = await api("/api/login", { method: "POST", body });
+      state.user = data.user;
+      saveRememberedCredentials();
+    }
     showApp();
-    await loadBoard();
+    if (isSuperAdmin()) {
+      switchView("superadmin");
+      return;
+    }
+    switchView("board");
   } catch (ex) {
+    if (ex.code === "org_exists" && state.registerMode && state.registerModeType === "create") {
+      showJoinModal(ex.payload.organization_name);
+      return;
+    }
     err.hidden = false;
     err.textContent = ex.message;
   }
 });
 
+$("join-modal-cancel").addEventListener("click", hideJoinModal);
+$("join-modal-close").addEventListener("click", () => {
+  hideJoinModal();
+  setAuthMode(false);
+  state.registerModeType = "create";
+});
+$("join-modal-confirm").addEventListener("click", submitJoinRequest);
+$("join-modal").addEventListener("click", (e) => {
+  if (e.target === $("join-modal")) hideJoinModal();
+});
+
+$("toggle-password").addEventListener("click", togglePasswordVisibility);
+$("remember-me").addEventListener("change", () => {
+  if (!$("remember-me").checked) localStorage.removeItem(REMEMBER_KEY);
+});
+
 $("switch-mode").addEventListener("click", () => setAuthMode(!state.registerMode));
 $("logout").addEventListener("click", async () => {
-  await api("/api/logout", { method: "POST" });
+  try {
+    await api("/api/logout", { method: "POST" });
+  } catch {
+    /* still clear local session UI */
+  }
   state.user = null;
-  state.board = null;
+  resetAppViews();
+  loadRememberedCredentials();
   showLogin();
 });
 $("prev-week").addEventListener("click", async () => {
@@ -1239,24 +1467,221 @@ async function loadSales() {
 }
 
 async function loadAdmin() {
-  const data = await api("/api/admin/users");
-  $("admin-users").innerHTML = `<thead><tr class="sum-cols"><th>帐号</th><th>显示名</th><th>角色</th><th>新密码</th><th>操作</th></tr></thead>
-    <tbody>${data.users
+  if ($("admin-org-name")) {
+    $("admin-org-name").value = state.user?.organization_name || "";
+  }
+  const [usersData, joinData] = await Promise.all([api("/api/admin/users"), api("/api/admin/join-requests")]);
+  const joinSection = $("join-requests-section");
+  const joinTable = $("join-requests");
+  if (joinData.requests.length) {
+    joinSection.classList.remove("hidden");
+    joinTable.innerHTML = `<thead><tr class="sum-cols"><th>帐号</th><th>显示名</th><th>申请时间</th><th>操作</th></tr></thead>
+      <tbody>${joinData.requests
+        .map(
+          (r) => `<tr data-req="${r.id}">
+        <td>${escapeHtml(r.username)}</td>
+        <td>${escapeHtml(r.display_name)}</td>
+        <td class="muted">${shortTime(r.created_at)}</td>
+        <td><div class="admin-actions">
+          <button type="button" data-act="approve-join">同意</button>
+          <button type="button" class="danger" data-act="reject-join">拒绝</button>
+        </div></td>
+      </tr>`
+        )
+        .join("")}</tbody>`;
+  } else {
+    joinSection.classList.add("hidden");
+    joinTable.innerHTML = "";
+  }
+  $("admin-users").innerHTML = `<thead><tr class="sum-cols"><th>帐号</th><th>显示名</th><th>状态</th><th>Agent Key</th><th>角色</th><th>新密码</th><th>操作</th></tr></thead>
+    <tbody>${usersData.users
       .map(
-        (u) => `<tr data-uid="${u.id}" data-username="${escapeHtml(u.username)}">
+        (u) => `<tr data-uid="${u.id}" data-username="${escapeHtml(u.username)}" class="${u.status === "pending" ? "user-status-pending" : ""}">
       <td>${escapeHtml(u.username)}</td>
-      <td><input value="${escapeHtml(u.display_name)}" data-field="display_name" /></td>
-      <td><label class="check-line"><input type="checkbox" data-field="is_admin" ${u.is_admin ? "checked" : ""} ${u.username === "admin" ? "disabled" : ""} /> 管理员</label></td>
-      <td><input class="pw-input" type="password" data-field="password" placeholder="填写后点重置密码" autocomplete="new-password" /></td>
+      <td><input value="${escapeHtml(u.display_name)}" data-field="display_name" ${u.status === "pending" ? "disabled" : ""} /></td>
+      <td>${u.status === "pending" ? '<span class="join-status-pending">待审批</span>' : "正常"}</td>
+      <td class="muted">${u.has_api_key ? escapeHtml(u.api_key_prefix || "已生成") : "未生成"}</td>
+      <td><label class="check-line"><input type="checkbox" data-field="is_admin" ${u.is_admin ? "checked" : ""} ${u.username === "admin" || u.status === "pending" ? "disabled" : ""} /> 管理员</label></td>
+      <td><input class="pw-input" type="password" data-field="password" placeholder="填写后点重置密码" autocomplete="new-password" ${u.status === "pending" ? "disabled" : ""} /></td>
       <td><div class="admin-actions">
-        <button type="button" data-act="save-user">保存</button>
-        <button type="button" data-act="reset-password">重置密码</button>
-        <button type="button" class="danger" data-act="delete-user">删除</button>
+        <button type="button" data-act="save-user" ${u.status === "pending" ? "disabled" : ""}>保存</button>
+        <button type="button" data-act="reset-password" ${u.status === "pending" ? "disabled" : ""}>重置密码</button>
+        <button type="button" class="danger" data-act="delete-user" ${u.status === "pending" ? "disabled" : ""}>删除</button>
       </div></td>
     </tr>`
       )
       .join("")}</tbody>`;
 }
+
+function agentBaseUrl() {
+  return `${window.location.origin}/api/agent`;
+}
+
+function buildAgentPrompt() {
+  const me = state.user || {};
+  const week = state.board?.current_week || state.selectedWeek || "";
+  const base = agentBaseUrl();
+  const host = window.location.host;
+  return `你是「简进」助手。用下面 API 查/改我的周任务。先向我要 API Key，本消息不含 Key。
+
+身份：${me.organization_name || ""} / ${me.display_name || ""}（${me.username || ""}）
+周次默认：${week || "接口返回的 current_week"}
+Base：${base}
+鉴权：每个请求 Header → Authorization: Bearer <API_KEY>
+（OpenClaw 可用 $JIANJIN_API_KEY，并绑定主机 ${host}）
+
+## 只允许这两个读接口
+GET ${base}/week?week=${week || "YYYY-Www"}
+GET ${base}/my-tasks?week=${week || "YYYY-Www"}
+
+## 唯一写接口（禁止探测其它 URL）
+PUT ${base}/progress
+Content-Type: application/json
+{
+  "task_id": 29,
+  "week_key": "${week || "YYYY-Www"}",
+  "content": "已完成",
+  "status": "done"
+}
+status：empty|doing|done|blocked
+不要调用 /api/tasks、/api/agent/task/:id 等。每条任务的 how_to_update 已给出正确写法。
+
+## 查询后怎么回复我（简练，不要解读）
+已完成：任务名（#id）
+进行中：任务名（#id）— 一句进度
+待做：任务名（#id）
+受阻：任务名（#id）— 一句原因
+
+我说「某某做完了」→ 直接按该任务 how_to_update 发 PUT，把 status 设为 done，然后用上面格式回我结果。`;
+}
+
+function renderAgentPrompt() {
+  const box = $("agent-prompt");
+  if (box) box.value = buildAgentPrompt();
+}
+
+async function loadAgentPanel() {
+  const status = $("agent-key-status");
+  const revoke = $("agent-revoke-key");
+  const copyKey = $("agent-copy-key");
+  const msg = $("agent-msg");
+  const once = $("agent-key-once");
+  if (once) once.classList.add("hidden");
+  try {
+    const data = await api("/api/me/api-key");
+    if (data.has_api_key) {
+      status.textContent = `已生成（前缀 ${data.api_key_prefix || "jj_…"}）。完整 Key 仅在生成时显示；Agent 向你要时再复制发给它。`;
+      revoke?.classList.remove("hidden");
+      if (state.agentApiKey) copyKey?.classList.remove("hidden");
+      else copyKey?.classList.add("hidden");
+    } else {
+      status.textContent = "等 Agent 向你要 Key 时，再点「生成 / 重置 Key」。";
+      revoke?.classList.add("hidden");
+      copyKey?.classList.add("hidden");
+      state.agentApiKey = null;
+    }
+    if (msg) msg.textContent = "";
+  } catch (ex) {
+    if (status) status.textContent = ex.message;
+  }
+  renderAgentPrompt();
+}
+
+$("agent-gen-key")?.addEventListener("click", async () => {
+  if (!confirm("生成新 Key 会使旧 Key 立即失效，确定吗？")) return;
+  const msg = $("agent-msg");
+  const once = $("agent-key-once");
+  try {
+    const data = await api("/api/me/api-key", { method: "POST" });
+    state.agentApiKey = data.api_key;
+    once.classList.remove("hidden");
+    once.innerHTML = `新 Key（复制后发给 Agent）：<br /><code>${escapeHtml(data.api_key)}</code>`;
+    msg.textContent = "Key 已生成。复制发给 Agent 即可（对话或密钥库均可）。";
+    $("agent-key-status").textContent = `已生成（前缀 ${data.api_key_prefix}）`;
+    $("agent-revoke-key")?.classList.remove("hidden");
+    $("agent-copy-key")?.classList.remove("hidden");
+    renderAgentPrompt();
+  } catch (ex) {
+    msg.textContent = ex.message;
+  }
+});
+
+$("agent-copy-key")?.addEventListener("click", async () => {
+  if (!state.agentApiKey) {
+    $("agent-msg").textContent = "当前页没有可复制的完整 Key。请重新生成一次。";
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(state.agentApiKey);
+    $("agent-msg").textContent = "Key 已复制，发给正在向你要 Key 的 Agent。";
+  } catch {
+    $("agent-msg").textContent = "复制失败，请手动选中上方黄色框中的 Key。";
+  }
+});
+
+$("agent-revoke-key")?.addEventListener("click", async () => {
+  if (!confirm("作废后 Agent 将无法再访问，确定吗？")) return;
+  try {
+    await api("/api/me/api-key", { method: "DELETE" });
+    state.agentApiKey = null;
+    $("agent-key-once")?.classList.add("hidden");
+    await loadAgentPanel();
+    $("agent-msg").textContent = "已作废";
+  } catch (ex) {
+    $("agent-msg").textContent = ex.message;
+  }
+});
+
+$("agent-copy-prompt")?.addEventListener("click", async () => {
+  renderAgentPrompt();
+  const text = $("agent-prompt")?.value || "";
+  try {
+    await navigator.clipboard.writeText(text);
+    $("agent-msg").textContent = "提示词已复制。先发给 Agent；它要 Key 时再生成并发送。";
+  } catch {
+    $("agent-prompt")?.select();
+    $("agent-msg").textContent = "请手动全选复制提示词";
+  }
+});
+
+$("join-requests").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-act]");
+  if (!btn) return;
+  const tr = btn.closest("tr");
+  const msg = $("admin-msg");
+  const act = btn.dataset.act;
+  try {
+    if (act === "approve-join") {
+      await api(`/api/admin/join-requests/${tr.dataset.req}/approve`, { method: "POST" });
+      msg.textContent = "已同意加入";
+    } else if (act === "reject-join") {
+      if (!confirm("确定拒绝该加入申请？")) return;
+      await api(`/api/admin/join-requests/${tr.dataset.req}/reject`, { method: "POST" });
+      msg.textContent = "已拒绝";
+    } else {
+      return;
+    }
+    await loadAdmin();
+  } catch (ex) {
+    msg.textContent = ex.message;
+  }
+});
+
+$("admin-org-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = $("admin-msg");
+  try {
+    const data = await api("/api/admin/organization", {
+      method: "PUT",
+      body: { name: $("admin-org-name").value.trim() },
+    });
+    state.user.organization_name = data.name;
+    showApp();
+    msg.textContent = "组织名称已更新";
+  } catch (ex) {
+    msg.textContent = ex.message;
+  }
+});
 
 $("admin-add-user").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -1314,6 +1739,156 @@ $("admin-users").addEventListener("click", async (e) => {
       return;
     }
     await loadAdmin();
+  } catch (ex) {
+    msg.textContent = ex.message;
+  }
+});
+
+async function loadSuperAdmin() {
+  if (!isSuperAdmin()) {
+    clearSuperAdminUi();
+    switchView("board");
+    return;
+  }
+  const data = await api("/api/superadmin/overview");
+  state.superadmin = data;
+  const s = data.stats;
+  $("sa-stats").innerHTML = [
+    ["组织", s.organizations],
+    ["已停用", s.suspended_organizations || 0],
+    ["帐号", s.users],
+    ["已激活", s.active_users],
+    ["待审批", s.pending_users],
+    ["任务", s.tasks],
+  ]
+    .map(([label, value]) => `<div class="sales-stat"><span>${label}</span><strong>${value}</strong></div>`)
+    .join("");
+  if (!data.organizations.length) {
+    $("sa-orgs").innerHTML = `<tbody><tr><td class="muted">暂无组织</td></tr></tbody>`;
+    $("sa-members-section").classList.add("hidden");
+    return;
+  }
+  $("sa-orgs").innerHTML = `<thead><tr class="sum-cols"><th>组织名称</th><th>状态</th><th>创建时间</th><th>人数</th><th>待审批</th><th>管理员</th><th>任务</th><th>操作</th></tr></thead>
+    <tbody>${data.organizations
+      .map((o) => {
+        const suspended = o.status === "suspended";
+        return `<tr data-org="${o.id}" class="${suspended ? "user-status-pending" : ""}">
+      <td><button type="button" class="link-btn" data-act="view-org">${escapeHtml(o.name)}</button></td>
+      <td>${suspended ? '<span class="org-status-suspended">已停用</span>' : '<span class="org-status-active">正常</span>'}</td>
+      <td class="muted">${shortTime(o.created_at)}</td>
+      <td>${o.active_count}/${o.user_count}</td>
+      <td>${o.pending_count}</td>
+      <td>${o.admin_count}</td>
+      <td>${o.task_count}</td>
+      <td><div class="admin-actions">
+        <button type="button" data-act="toggle-org">${suspended ? "恢复" : "停用"}</button>
+        <button type="button" class="danger" data-act="delete-org">删除</button>
+      </div></td>
+    </tr>`;
+      })
+      .join("")}</tbody>`;
+}
+
+function renderSuperAdminMembers(orgId) {
+  const org = (state.superadmin?.organizations || []).find((o) => String(o.id) === String(orgId));
+  const section = $("sa-members-section");
+  const table = $("sa-members");
+  if (!org) {
+    section.classList.add("hidden");
+    return;
+  }
+  $("sa-members-title").textContent = `「${org.name}」成员${org.status === "suspended" ? "（组织已停用）" : ""}`;
+  section.classList.remove("hidden");
+  if (!org.users.length) {
+    table.innerHTML = `<tbody><tr><td class="muted">该组织暂无成员</td></tr></tbody>`;
+    return;
+  }
+  table.innerHTML = `<thead><tr class="sum-cols"><th>帐号</th><th>显示名</th><th>状态</th><th>角色</th><th>注册时间</th><th>重置管理员密码</th></tr></thead>
+    <tbody>${org.users
+      .map(
+        (u) => `<tr data-uid="${u.id}" data-username="${escapeHtml(u.username)}">
+      <td>${escapeHtml(u.username)}</td>
+      <td>${escapeHtml(u.display_name)}</td>
+      <td>${u.status === "pending" ? '<span class="join-status-pending">待审批</span>' : "正常"}</td>
+      <td>${u.is_admin ? "管理员" : "成员"}</td>
+      <td class="muted">${shortTime(u.created_at)}</td>
+      <td>${
+        u.is_admin
+          ? `<div class="admin-actions">
+              <input class="pw-input" type="password" data-field="password" placeholder="新密码" autocomplete="new-password" />
+              <button type="button" data-act="reset-admin-pw">重置</button>
+            </div>`
+          : '<span class="muted">—</span>'
+      }</td>
+    </tr>`
+      )
+      .join("")}</tbody>`;
+}
+
+$("sa-orgs").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-act]");
+  if (!btn) return;
+  const tr = btn.closest("tr");
+  const orgId = tr.dataset.org;
+  const msg = $("sa-msg");
+  const org = (state.superadmin?.organizations || []).find((o) => String(o.id) === String(orgId));
+  if (btn.dataset.act === "view-org") {
+    renderSuperAdminMembers(orgId);
+    return;
+  }
+  if (btn.dataset.act === "toggle-org") {
+    const next = org?.status === "suspended" ? "active" : "suspended";
+    const tip =
+      next === "suspended"
+        ? `确定停用组织「${org?.name || ""}」？成员登录将显示「被冻结」，数据会保留。`
+        : `确定恢复组织「${org?.name || ""}」？`;
+    if (!confirm(tip)) return;
+    try {
+      await api(`/api/superadmin/organizations/${orgId}/status`, {
+        method: "POST",
+        body: { status: next },
+      });
+      msg.textContent = next === "suspended" ? `已停用组织「${org?.name || ""}」` : `已恢复组织「${org?.name || ""}」`;
+      await loadSuperAdmin();
+      if (state.superadmin?.organizations?.some((o) => String(o.id) === String(orgId))) {
+        renderSuperAdminMembers(orgId);
+      }
+    } catch (ex) {
+      msg.textContent = ex.message;
+    }
+    return;
+  }
+  if (btn.dataset.act === "delete-org") {
+    if (!confirm(`确定删除组织「${org?.name || ""}」？将同时删除其全部成员和数据，不可恢复。`)) return;
+    try {
+      await api(`/api/superadmin/organizations/${orgId}`, { method: "DELETE" });
+      msg.textContent = `已删除组织「${org?.name || ""}」`;
+      $("sa-members-section").classList.add("hidden");
+      await loadSuperAdmin();
+    } catch (ex) {
+      msg.textContent = ex.message;
+    }
+  }
+});
+
+$("sa-members").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-act='reset-admin-pw']");
+  if (!btn) return;
+  const tr = btn.closest("tr");
+  const msg = $("sa-msg");
+  const pw = tr.querySelector("[data-field='password']")?.value || "";
+  if (!pw) {
+    msg.textContent = "请先填写新密码，再点「重置」";
+    return;
+  }
+  if (!confirm(`确定重置管理员「${tr.dataset.username}」的密码？`)) return;
+  try {
+    await api(`/api/superadmin/users/${tr.dataset.uid}/reset-password`, {
+      method: "POST",
+      body: { password: pw },
+    });
+    tr.querySelector("[data-field='password']").value = "";
+    msg.textContent = `已重置管理员「${tr.dataset.username}」的密码`;
   } catch (ex) {
     msg.textContent = ex.message;
   }

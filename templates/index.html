@@ -3,76 +3,91 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>工作日程面板</title>
+  <title>超简PM · 超简项目进度管理</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=20260903j" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=20260904h" />
 </head>
 <body>
   <div id="login-view" class="login-wrap hidden">
     <div class="login-shell">
       <aside class="login-promo">
-        <div class="login-promo-brand">
-          <span class="brand-mark">日</span>
-          <span>工作日程面板</span>
+        <div class="login-promo-inner">
+        <header class="promo-head">
+          <img class="brand-logo brand-logo--promo" src="{{ url_for('static', filename='logo.svg') }}" alt="超简PM" width="64" height="64" />
+          <div class="promo-head-text">
+            <strong>超简PM</strong>
+            <span class="promo-free-badge">完全免费</span>
+          </div>
+        </header>
+        <div class="promo-main">
+          <h2>超简PM</h2>
+          <p class="login-promo-lead">一表管理所有进度<br />一图管理所有收入</p>
+          <p class="promo-desc">按周协作看板，组织数据隔离。够用就好，不堆功能。</p>
+          <div class="promo-showcase">
+            <figure class="promo-shot promo-shot-board">
+              <img src="{{ url_for('static', filename='promo-board.svg') }}?v=2" alt="进度看板示意" width="400" height="228" loading="eager" />
+            </figure>
+            <figure class="promo-shot promo-shot-sales">
+              <img src="{{ url_for('static', filename='promo-sales.svg') }}?v=2" alt="销售管理示意" width="400" height="228" loading="eager" />
+            </figure>
+          </div>
         </div>
-        <h2>团队每周工作，一张看板看完</h2>
-        <p class="login-promo-lead">按周跟踪任务进度、完成内容和回款节点，把协作从聊天记录里拿出来。</p>
-        <ul class="login-features">
-          <li>
-            <strong>周进度看板</strong>
-            <span>分类、任务、状态一眼对齐，月度与年度目标始终在右侧。</span>
-          </li>
-          <li>
-            <strong>个人本周事项</strong>
-            <span>工作任务里 @同事，对方右侧面板只看到属于自己的那一句。</span>
-          </li>
-          <li>
-            <strong>销售回款跟踪</strong>
-            <span>管理员可登记确定回款与已回款，并在周卡片上同步金额。</span>
-          </li>
-        </ul>
-        <p class="login-promo-foot">内部工作区 · 请使用管理员开通的帐号登录</p>
+        </div>
       </aside>
       <div class="login-panel">
         <div class="login-card">
-          <p class="login-kicker">Welcome back</p>
-          <h1>登录工作区</h1>
-          <p class="login-lead">使用公司帐号进入工作日程面板</p>
+          <p class="login-kicker">CHAOJIAN PM</p>
+          <h1 id="auth-title">登录工作区</h1>
+          <p class="login-lead" id="auth-lead">使用帐号密码登录，无需填写组织名</p>
           <form id="auth-form">
+            <label id="org-name-field" class="hidden">
+              组织名称 <span class="required-mark" aria-hidden="true">*</span>
+              <input id="org-name" name="organization_name" autocomplete="organization" placeholder="输入已注册组织名，或填写新名称" />
+            </label>
             <label>
               帐号
               <input id="username" name="username" autocomplete="username" required placeholder="请输入帐号" />
             </label>
             <label id="display-name-field" class="hidden">
               显示名
-              <input id="display-name" name="display_name" autocomplete="nickname" />
+              <input id="display-name" name="display_name" autocomplete="nickname" placeholder="组织内显示的名称" />
             </label>
             <label>
               密码
-              <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="请输入密码" />
+              <span class="password-field">
+                <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="请输入密码" />
+                <button type="button" id="toggle-password" class="password-toggle" aria-label="显示密码" title="显示密码">👁</button>
+              </span>
             </label>
+            <div id="remember-wrap" class="auth-options">
+              <label class="remember-line">
+                <input type="checkbox" id="remember-me" />
+                记住帐号密码
+              </label>
+            </div>
             <p id="auth-error" class="error" hidden></p>
             <button type="submit" id="auth-submit">进入工作区</button>
           </form>
-          <p class="login-switch hidden" id="login-register-wrap">
+          <p class="login-switch" id="login-register-wrap">
             <span id="switch-hint">还没有帐号？</span>
-            <button type="button" id="switch-mode" class="link-btn">注册一个</button>
+            <button type="button" id="switch-mode" class="link-btn">去注册</button>
           </p>
-          <p class="login-help">没有帐号？请联系管理员在「管理」中开通。</p>
+          <p class="login-help hidden" id="login-help-register">加入已有组织需等待管理员审批；注册新组织时您将成为管理员。</p>
         </div>
       </div>
     </div>
+    <footer class="login-footer">联系邮箱：<a href="mailto:404243800@qq.com">404243800@qq.com</a></footer>
   </div>
 
   <div id="app-view" class="app hidden">
     <header class="topbar">
       <div class="brand">
-        <span class="brand-mark">日</span>
+        <img class="brand-logo" src="{{ url_for('static', filename='logo.svg') }}" alt="超简PM" width="36" height="36" />
         <div>
-          <strong>工作日程面板</strong>
-          <span>项目工作进度</span>
+          <strong>超简PM</strong>
+          <span>超简项目进度管理</span>
         </div>
       </div>
       <div class="week-nav" id="week-nav">
@@ -84,11 +99,14 @@
         <button type="button" id="next-week" class="week-arrow" aria-label="下一周">›</button>
         <button type="button" id="this-week">回到本周</button>
       </div>
+      <div class="topbar-spacer" aria-hidden="true"></div>
       <nav class="tabs">
         <button type="button" class="tab active" data-view="board">进度看板</button>
         <button type="button" class="tab" data-view="summary">周工作汇总</button>
         <button type="button" class="tab hidden" id="sales-tab" data-view="sales">销售管理</button>
         <button type="button" class="tab hidden" id="admin-tab" data-view="admin">管理</button>
+        <button type="button" class="tab" id="agent-tab" data-view="agent">Agent API</button>
+        <button type="button" class="tab hidden" id="superadmin-tab" data-view="superadmin">平台管理</button>
       </nav>
       <div class="userbox">
         <span id="whoami"></span>
@@ -155,11 +173,52 @@
       <div id="sales-projects"></div>
     </section>
 
+    <section id="agent-view" class="view hidden">
+      <header class="digest">
+        <h2>Agent API</h2>
+        <p>先把提示词发给 Agent；等它向你要 Key 时，再生成并发送 Key。</p>
+      </header>
+      <div class="agent-panel">
+        <div class="agent-prompt-box">
+          <p class="agent-label">① 发给 Agent 的提示词（先做这一步）</p>
+          <p class="muted agent-hint">提示词说明接口怎么用，不含 Key。先复制发给 Agent。</p>
+          <div class="agent-key-actions">
+            <button type="button" id="agent-copy-prompt">复制提示词</button>
+          </div>
+          <textarea id="agent-prompt" readonly rows="18"></textarea>
+        </div>
+        <div class="agent-key-box">
+          <p class="agent-label">② API Key（等 Agent 向你要时再给）</p>
+          <p class="muted agent-hint">Agent 读完提示词后会向你要 Key。再生成、复制发给它即可（可直接贴对话，或按它的密钥流程录入）。</p>
+          <p id="agent-key-status" class="muted">尚未生成</p>
+          <div class="agent-key-actions">
+            <button type="button" id="agent-gen-key">生成 / 重置 Key</button>
+            <button type="button" id="agent-copy-key" class="ghost-ink hidden">复制 Key</button>
+            <button type="button" id="agent-revoke-key" class="ghost-ink hidden">作废 Key</button>
+          </div>
+          <p id="agent-key-once" class="agent-key-once hidden"></p>
+          <p id="agent-msg" class="muted"></p>
+        </div>
+      </div>
+    </section>
+
     <section id="admin-view" class="view hidden">
       <header class="digest">
-        <h2>人员与密码</h2>
-        <p>仅管理员可见。可开通帐号、改显示名、重置密码，以及删除帐号。</p>
+        <h2>组织管理</h2>
+        <p>管理员可修改组织名称、添加成员、审批加入申请。</p>
       </header>
+      <form id="admin-org-form" class="admin-org-form">
+        <label>组织名称</label>
+        <div class="admin-org-row">
+          <input id="admin-org-name" placeholder="组织名称" required />
+          <button type="submit">保存名称</button>
+        </div>
+      </form>
+      <section id="join-requests-section" class="hidden">
+        <h3 class="admin-section-title">待审批加入申请</h3>
+        <table class="sum-table" id="join-requests"></table>
+      </section>
+      <h3 class="admin-section-title">组织成员</h3>
       <form id="admin-add-user" class="admin-form">
         <input id="new-username" placeholder="帐号" required />
         <input id="new-display-name" placeholder="显示名" />
@@ -170,6 +229,36 @@
       <p id="admin-msg" class="muted"></p>
       <table class="sum-table" id="admin-users"></table>
     </section>
+
+    <section id="superadmin-view" class="view hidden">
+      <header class="digest">
+        <h2>平台管理</h2>
+        <p>查看全部组织、人员与统计；可停用组织、重置管理员密码，或删除组织。</p>
+      </header>
+      <div id="sa-stats" class="sa-stats"></div>
+      <p id="sa-msg" class="muted"></p>
+      <h3 class="admin-section-title">全部组织</h3>
+      <table class="sum-table" id="sa-orgs"></table>
+      <section id="sa-members-section" class="hidden">
+        <h3 class="admin-section-title" id="sa-members-title">组织成员</h3>
+        <table class="sum-table" id="sa-members"></table>
+      </section>
+    </section>
+  </div>
+
+  <div id="join-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="join-modal-title">
+    <div class="modal-card join-modal-card">
+      <h3 id="join-modal-title">提示</h3>
+      <p id="join-modal-body" class="join-modal-body"></p>
+      <div id="join-modal-actions" class="modal-actions">
+        <button type="button" id="join-modal-cancel" class="ghost">否</button>
+        <button type="button" id="join-modal-confirm">是</button>
+      </div>
+      <p id="join-modal-success" class="join-modal-success hidden">加入申请已提交，请等待组织管理员审批后再登录</p>
+      <div id="join-modal-done" class="modal-actions hidden">
+        <button type="button" id="join-modal-close">知道了</button>
+      </div>
+    </div>
   </div>
 
   <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
@@ -183,6 +272,6 @@
     </div>
   </div>
 
-  <script src="{{ url_for('static', filename='app.js') }}?v=20260903k"></script>
+  <script src="{{ url_for('static', filename='app.js') }}?v=20260904j"></script>
 </body>
 </html>
