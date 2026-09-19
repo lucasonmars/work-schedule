@@ -5,11 +5,13 @@
 在线试用（免安装）：[schedule.peoplepark.com.cn](https://schedule.peoplepark.com.cn)
 
 <p>
-  <img src="docs/login.png" alt="超简PM 登录页：免费团队进度与销售管理" width="800" />
+  <img src="docs/login.png" alt="超简PM 登录页" width="800" />
 </p>
 <p>
-  <img src="static/promo-board.svg" alt="按周协作的进度看板" width="400" />
-  <img src="static/promo-sales.svg" alt="免费销售回款管理" width="400" />
+  <img src="docs/board.png" alt="进度看板实拍" width="800" />
+</p>
+<p>
+  <img src="docs/sales.png" alt="销售管理实拍" width="800" />
 </p>
 
 ## 四个理由用它
